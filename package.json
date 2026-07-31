@@ -9,9 +9,9 @@
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "typecheck:api": "tsc -p tsconfig.api.json",
-    "lint": "eslint src/",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "check:secrets": "node scripts/check-secrets.mjs"
   },
   "dependencies": {
     "@fastify/cors": "^11.0.1",

@@ -26,6 +26,8 @@ jobs:
           cache: npm
       - name: Install
         run: npm ci
+      - name: Secret scan
+        run: npm run check:secrets
       - name: Typecheck
         run: npx tsc --noEmit
       - name: Typecheck (api entry)
