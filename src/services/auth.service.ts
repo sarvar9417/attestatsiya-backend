@@ -35,6 +35,14 @@ function mapAuthError(error: { message?: string } | null, fallback: string): App
   if (message.includes('unexpected_failure')) {
     return new AppError('Serverda xatolik yuz berdi', 500, 'AUTH_SERVER_ERROR')
   }
+  // Supabase default email provayderining rate-limit xatosi (429 over_email_send_rate_limit)
+  if (message.includes('rate limit') || message.includes('over_email_send_rate_limit')) {
+    return new AppError(
+      "Xat yuborish chegarasiga yetildi. Bir necha daqiqadan keyin qayta urinib ko'ring.",
+      429,
+      'EMAIL_RATE_LIMITED'
+    )
+  }
   return new AppError(fallback, 400, 'AUTH_ERROR')
 }
 

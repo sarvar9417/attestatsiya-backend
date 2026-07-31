@@ -4,6 +4,7 @@ import { authService } from '../auth.service.js'
 const { mockAuth, mockFrom } = vi.hoisted(() => {
   const mockAuth = {
     getUser: vi.fn(),
+    resend: vi.fn(),
     admin: {
       createUser: vi.fn(),
       updateUserById: vi.fn(),
@@ -94,5 +95,33 @@ describe('authService', () => {
     ).rejects.toMatchObject({ code: 'UNAUTHORIZED', statusCode: 401 })
 
     expect(mockAuth.admin.updateUserById).not.toHaveBeenCalled()
+  })
+
+  it('resendConfirmation: maps email rate limit to EMAIL_RATE_LIMITED (429)', async () => {
+    mockAuth.resend.mockResolvedValue({
+      data: null,
+      error: { message: 'Email rate limit exceeded' },
+    })
+
+    await expect(authService.resendConfirmation('test@test.com')).rejects.toMatchObject({
+      code: 'EMAIL_RATE_LIMITED',
+      statusCode: 429,
+    })
+
+    expect(mockAuth.resend).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'signup', email: 'test@test.com' })
+    )
+  })
+
+  it('resendConfirmation: passes emailRedirectTo from config', async () => {
+    mockAuth.resend.mockResolvedValue({ data: null, error: null })
+
+    const result = await authService.resendConfirmation('test@test.com')
+    expect(result).toEqual({ sent: true })
+    expect(mockAuth.resend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: { emailRedirectTo: expect.any(String) },
+      })
+    )
   })
 })
