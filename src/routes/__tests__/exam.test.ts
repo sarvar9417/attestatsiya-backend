@@ -142,6 +142,17 @@ describe('Exam Routes', () => {
     expect(response.statusCode).toBe(401)
   })
 
+  it('GET /api/exam/history returns 401 without auth token', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/exam/history',
+    })
+
+    expect(response.statusCode).toBe(401)
+    const body = JSON.parse(response.body)
+    expect(body.error.code).toBe('TOKEN_REQUIRED')
+  })
+
   it('GET /api/exam/:id/review returns 401 without auth token', async () => {
     const response = await app.inject({
       method: 'GET',
