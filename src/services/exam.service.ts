@@ -1,7 +1,15 @@
 import { getAuthedClient } from '../lib/supabase.js'
 import { resolveModuleUuid, resolveLessonUuid } from '../lib/resolveIds.js'
 import { AppError, NotFoundError } from '../lib/errors.js'
-import type { StartExamInput, ExamStartResponse, ExamSubmitResponse, ExamSubmitError, ExamFinishResponse } from '../schemas/exam.js'
+import type {
+  StartExamInput,
+  ExamStartResponse,
+  ExamSubmitResponse,
+  ExamSubmitError,
+  ExamFinishResponse,
+  ExamHistoryQuery,
+  ExamHistoryResponse,
+} from '../schemas/exam.js'
 
 /**
  * Exam Service
@@ -134,6 +142,105 @@ export const examService = {
     }
 
     return result.data as Record<string, unknown>[]
+  },
+
+  /**
+   * Finished exam history for the authenticated learner only.
+   *
+   * Defense in depth:
+   * - token is resolved to the current user;
+   * - query explicitly filters by user_id;
+   * - authenticated client keeps RLS in force.
+   */
+  async getHistory(
+    query: ExamHistoryQuery,
+    userToken: string
+  ): Promise<ExamHistoryResponse> {
+    const client = getAuthedClient(userToken)
+    const { data: authData, error: authError } = await client.auth.getUser()
+
+    if (authError || !authData.user) {
+      throw new AppError('Avtorizatsiyadan o‘tmagansiz', 401, 'AUTH_REQUIRED')
+    }
+
+    const offset = (query.page - 1) * query.page_size
+    const { data: exams, count, error } = await client
+      .from('exams')
+      .select(
+        'id, kind, lesson_id, started_at, finished_at, total_score, max_score, passed, breakdown',
+        { count: 'exact' }
+      )
+      .eq('user_id', authData.user.id)
+      .not('finished_at', 'is', null)
+      .order('finished_at', { ascending: false })
+      .range(offset, offset + query.page_size - 1)
+
+    if (error) {
+      throw new AppError(
+        'Natijalar tarixini olishda xatolik',
+        500,
+        'EXAM_HISTORY_ERROR'
+      )
+    }
+
+    const rows = exams ?? []
+    const lessonIds = [
+      ...new Set(
+        rows
+          .map(row => row.lesson_id)
+          .filter((value): value is string => typeof value === 'string')
+      ),
+    ]
+
+    const lessonBy = new Map<
+      string,
+      { id: string; slug: string | null; title_uz: string | null }
+    >()
+
+    if (lessonIds.length > 0) {
+      const { data: lessons, error: lessonError } = await client
+        .from('lessons')
+        .select('id, slug, title_uz')
+        .in('id', lessonIds)
+
+      if (lessonError) {
+        throw new AppError(
+          'Natijalar tarixini olishda xatolik',
+          500,
+          'EXAM_HISTORY_ERROR'
+        )
+      }
+
+      for (const lesson of lessons ?? []) {
+        lessonBy.set(lesson.id, lesson)
+      }
+    }
+
+    return {
+      items: rows.map(exam => {
+        const lesson =
+          typeof exam.lesson_id === 'string'
+            ? lessonBy.get(exam.lesson_id)
+            : undefined
+
+        return {
+          exam_id: exam.id,
+          kind: exam.kind,
+          lesson_id: exam.lesson_id,
+          lesson_slug: lesson?.slug ?? null,
+          lesson_title_uz: lesson?.title_uz ?? null,
+          started_at: exam.started_at,
+          finished_at: exam.finished_at as string,
+          total_score: exam.total_score ?? 0,
+          max_score: exam.max_score ?? 0,
+          passed: exam.passed ?? null,
+          breakdown: exam.breakdown ?? null,
+        }
+      }),
+      total: count ?? 0,
+      page: query.page,
+      page_size: query.page_size,
+    }
   },
 
   /**
