@@ -37,6 +37,16 @@ export const reviewParamsSchema = {
   }),
 }
 
+// ─── Learner History ───────────────────────────────────────────
+export const examHistoryQuerySchema = {
+  querystring: z.object({
+    page: z.coerce.number().int().min(1).default(1),
+    page_size: z.coerce.number().int().min(1).max(50).default(20),
+  }),
+}
+
+export type ExamHistoryQuery = z.infer<typeof examHistoryQuerySchema.querystring>
+
 // ─── Response Types ─────────────────────────────────────────────
 export interface ExamStartResponse {
   exam_id: string
@@ -72,4 +82,25 @@ export interface ExamFinishResponse {
   passed: boolean | null
   breakdown: { group_code: string; jami: number; togri: number }[] | null
   already_finished: boolean
+}
+
+export interface ExamHistoryItem {
+  exam_id: string
+  kind: string
+  lesson_id: string | null
+  lesson_slug: string | null
+  lesson_title_uz: string | null
+  started_at: string
+  finished_at: string
+  total_score: number
+  max_score: number
+  passed: boolean | null
+  breakdown: unknown | null
+}
+
+export interface ExamHistoryResponse {
+  items: ExamHistoryItem[]
+  total: number
+  page: number
+  page_size: number
 }
