@@ -288,3 +288,134 @@ describe('examService.getDueReviews', () => {
       .rejects.toMatchObject({ code: 'DUE_REVIEWS_ERROR', statusCode: 500 })
   })
 })
+
+describe('examService.getHistory', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('returns only authenticated learner finished attempts with lesson metadata', async () => {
+    const range = vi.fn().mockResolvedValue({
+      data: [
+        {
+          id: '550e8400-e29b-41d4-a716-446655440010',
+          kind: 'mavzu',
+          lesson_id: '550e8400-e29b-41d4-a716-446655440011',
+          started_at: '2026-10-06T10:00:00.000Z',
+          finished_at: '2026-10-06T10:20:00.000Z',
+          total_score: 16,
+          max_score: 20,
+          passed: true,
+          breakdown: null,
+        },
+      ],
+      count: 1,
+      error: null,
+    })
+    const order = vi.fn(() => ({ range }))
+    const not = vi.fn(() => ({ order }))
+    const eq = vi.fn(() => ({ not }))
+    const examSelect = vi.fn(() => ({ eq }))
+    const lessonIn = vi.fn().mockResolvedValue({
+      data: [
+        {
+          id: '550e8400-e29b-41d4-a716-446655440011',
+          slug: 'M01.02',
+          title_uz: 'Axborot turlari',
+        },
+      ],
+      error: null,
+    })
+    const lessonSelect = vi.fn(() => ({ in: lessonIn }))
+
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'exams') return { select: examSelect }
+      if (table === 'lessons') return { select: lessonSelect }
+      throw new Error(`unexpected table: ${table}`)
+    })
+
+    const result = await examService.getHistory(
+      { page: 1, page_size: 20 },
+      'token-abc'
+    )
+
+    expect(eq).toHaveBeenCalledWith('user_id', 'user-1')
+    expect(not).toHaveBeenCalledWith('finished_at', 'is', null)
+    expect(order).toHaveBeenCalledWith('finished_at', { ascending: false })
+    expect(range).toHaveBeenCalledWith(0, 19)
+    expect(result.total).toBe(1)
+    expect(result.items[0]).toMatchObject({
+      exam_id: '550e8400-e29b-41d4-a716-446655440010',
+      lesson_slug: 'M01.02',
+      lesson_title_uz: 'Axborot turlari',
+      total_score: 16,
+      max_score: 20,
+      passed: true,
+    })
+  })
+
+  it('does not query lesson metadata when history page has no lesson attempts', async () => {
+    const range = vi.fn().mockResolvedValue({
+      data: [
+        {
+          id: '550e8400-e29b-41d4-a716-446655440020',
+          kind: 'mock',
+          lesson_id: null,
+          started_at: '2026-10-06T10:00:00.000Z',
+          finished_at: '2026-10-06T12:00:00.000Z',
+          total_score: 70,
+          max_score: 100,
+          passed: true,
+          breakdown: [],
+        },
+      ],
+      count: 1,
+      error: null,
+    })
+    const examSelect = vi.fn(() => ({
+      eq: vi.fn(() => ({
+        not: vi.fn(() => ({
+          order: vi.fn(() => ({ range })),
+        })),
+      })),
+    }))
+
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'exams') return { select: examSelect }
+      throw new Error(`unexpected table: ${table}`)
+    })
+
+    const result = await examService.getHistory(
+      { page: 2, page_size: 10 },
+      'token-abc'
+    )
+
+    expect(range).toHaveBeenCalledWith(10, 19)
+    expect(mockFrom).toHaveBeenCalledTimes(1)
+    expect(result.items[0].lesson_title_uz).toBeNull()
+  })
+
+  it('throws EXAM_HISTORY_ERROR when learner query fails', async () => {
+    const range = vi.fn().mockResolvedValue({
+      data: null,
+      count: null,
+      error: { message: 'db error' },
+    })
+    mockFrom.mockReturnValue({
+      select: vi.fn(() => ({
+        eq: vi.fn(() => ({
+          not: vi.fn(() => ({
+            order: vi.fn(() => ({ range })),
+          })),
+        })),
+      })),
+    })
+
+    await expect(
+      examService.getHistory({ page: 1, page_size: 20 }, 'token-abc')
+    ).rejects.toMatchObject({
+      code: 'EXAM_HISTORY_ERROR',
+      statusCode: 500,
+    })
+  })
+})
