@@ -1,6 +1,12 @@
 import type { FastifyInstance } from 'fastify'
 import { examService } from '../services/exam.service.js'
-import { startExamSchema, submitAnswerSchema, finishExamSchema, reviewParamsSchema } from '../schemas/exam.js'
+import {
+  startExamSchema,
+  submitAnswerSchema,
+  finishExamSchema,
+  reviewParamsSchema,
+  examHistoryQuerySchema,
+} from '../schemas/exam.js'
 import { sendError, AppError } from '../lib/errors.js'
 import { getDemoToken } from '../lib/demoAuth.js'
 import { config } from '../config.js'
@@ -89,6 +95,32 @@ export async function examRoutes(app: FastifyInstance) {
 
     try {
       const result = await examService.finish(exam_id, token)
+      return reply.send(result)
+    } catch (error) {
+      return sendError(reply, error)
+    }
+  })
+
+  /**
+   * GET /api/exam/history
+   * List finished attempts for the authenticated learner only.
+   */
+  app.get('/api/exam/history', async (req, reply) => {
+    const query = examHistoryQuerySchema.querystring.parse(req.query)
+    let token = getToken(req)
+
+    if (!token && config.demo.enabled) {
+      try {
+        token = await getDemoToken()
+      } catch (error) {
+        return sendError(reply, error)
+      }
+    }
+
+    if (!token) throw new AppError('Token kerak', 401, 'TOKEN_REQUIRED')
+
+    try {
+      const result = await examService.getHistory(query, token)
       return reply.send(result)
     } catch (error) {
       return sendError(reply, error)
